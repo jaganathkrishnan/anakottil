@@ -50,7 +50,7 @@ function BookingCalendar() {
 
   const token = localStorage.getItem("authToken");
 
-  // Fetch bookings
+  // Load bookings for current month
   useEffect(() => {
     const fetchBookings = async () => {
       try {
@@ -60,10 +60,10 @@ function BookingCalendar() {
         );
         setBookings(res.data);
       } catch (e) {
-        console.log("Error loading bookings");
+        console.log("Error loading bookings", e);
       }
     };
-    fetchBookings();
+    if (token) fetchBookings();
   }, [currentMonth, token]);
 
   const handleDateChange = (date) => {
@@ -81,6 +81,8 @@ function BookingCalendar() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedDate) return;
+
     const dateStr = formatDate(selectedDate);
 
     try {
@@ -96,9 +98,10 @@ function BookingCalendar() {
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      alert("Booking successful!");
+      alert("Booking successful! (pending)");
       setBookings((prev) => [...prev, res.data]);
       setSelectedDate(null);
+      setMalayalamStar("");
       setFormData({
         name: "",
         pooja_type: "archana",
@@ -111,54 +114,94 @@ function BookingCalendar() {
     }
   };
 
+  // Block booking if any non-cancelled booking exists on that day
   const isBooked = selectedDate
-    ? bookings.some((b) => b.date === formatDate(selectedDate))
+    ? bookings.some(
+        (b) =>
+          b.date === formatDate(selectedDate) &&
+          b.status !== "cancelled"
+      )
     : false;
 
+  // Tailwind-only indicator: red dot for confirmed, orange for pending-only
+  const tileContent = ({ date, view }) => {
+    if (view !== "month") return null;
+    const dateStr = formatDate(date);
+
+    const bookingsForDay = bookings.filter((b) => b.date === dateStr);
+    const activeBookings = bookingsForDay.filter(
+      (b) => b.status !== "cancelled"
+    );
+    if (activeBookings.length === 0) return null;
+
+    const hasConfirmed = activeBookings.some((b) => b.status === "confirmed");
+    const dotClass = hasConfirmed ? "text-red-500" : "text-orange-500";
+
+    return (
+      <span className={`block text-center text-[10px] mt-0.5 ${dotClass}`}>
+        ●
+      </span>
+    );
+  };
+
   return (
-    <div className="p-6 bg-white min-h-screen">
-      <h2 className="text-2xl font-bold text-center mb-5">📅 Pooja Booking</h2>
+    <div className="p-6 bg-white">
+      <h2 className="text-xl font-semibold mb-1">📅 Pooja Booking</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        <span className="text-red-500 font-semibold">●</span> confirmed,
+        <span className="text-orange-500 font-semibold ml-1">●</span> pending.
+        Cancelled slots are free again.
+      </p>
 
       <div className="flex flex-col md:flex-row gap-8 justify-center items-start">
         {/* Calendar */}
-        <Calendar
-          onClickDay={handleDateChange}
-          onActiveStartDateChange={handleMonthChange}
-          minDate={new Date()}
-          className="shadow-md rounded-lg p-2 bg-white"
-        />
+        <div className="shadow-md rounded-lg p-2 bg-white">
+          <Calendar
+            onClickDay={handleDateChange}
+            onActiveStartDateChange={handleMonthChange}
+            minDate={new Date()}
+            tileContent={tileContent}
+          />
+        </div>
 
         {/* Form */}
         <div className="w-full max-w-sm">
           {!selectedDate && (
-            <p className="text-gray-500 text-center">Select a date to book</p>
+            <p className="text-gray-500 text-sm">
+              Select a date on the calendar to book a pooja.
+            </p>
           )}
 
           {selectedDate && !isBooked && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-gray-700">
-                <strong>Date:</strong> {selectedDate.toDateString()} <br />
-                <strong>Nakshatra:</strong> {malayalamStar}
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Date:</span>{" "}
+                {selectedDate.toDateString()}
+                <br />
+                <span className="font-medium">Nakshatra:</span>{" "}
+                {malayalamStar}
               </p>
 
               <div>
-                <label className="block mb-1 font-medium">Name</label>
+                <label className="block mb-1 text-sm font-medium">Name</label>
                 <input
                   name="name"
                   value={formData.name}
                   onChange={handleInput}
                   required
-                  className="w-full border px-3 py-2 rounded"
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">Pooja Type</label>
+                <label className="block mb-1 text-sm font-medium">
+                  Pooja Type
+                </label>
                 <select
                   name="pooja_type"
                   value={formData.pooja_type}
                   onChange={handleInput}
-                  className="w-full border px-3 py-2 rounded"
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
                   {POOJA_TYPES.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -169,35 +212,43 @@ function BookingCalendar() {
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">Time Slot (optional)</label>
+                <label className="block mb-1 text-sm font-medium">
+                  Time Slot (optional)
+                </label>
                 <input
                   name="time_slot"
                   value={formData.time_slot}
                   onChange={handleInput}
-                  className="w-full border px-3 py-2 rounded"
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="e.g. 7:00 AM"
                 />
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">Notes (optional)</label>
+                <label className="block mb-1 text-sm font-medium">
+                  Notes (optional)
+                </label>
                 <textarea
                   name="notes"
                   value={formData.notes}
                   onChange={handleInput}
                   rows={2}
-                  className="w-full border px-3 py-2 rounded"
-                ></textarea>
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
               </div>
 
-              <button className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700">
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded text-sm font-medium"
+              >
                 Book Pooja
               </button>
             </form>
           )}
 
           {selectedDate && isBooked && (
-            <p className="text-red-600 font-semibold">
-              ❌ Already booked for {selectedDate.toDateString()}
+            <p className="text-red-600 text-sm font-semibold mt-2">
+              ❌ Slot already booked on {selectedDate.toDateString()} (pending or confirmed).
             </p>
           )}
         </div>
