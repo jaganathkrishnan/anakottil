@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import UserDashboard from "./pages/UserDashboard"; // redirect component
 import UserLayout from "./layouts/UserLayout";
+import AdminDonations from "./pages/AdminDonations";
 
 import AboutPage from "./pages/User/AboutPage";
 import MissionPage from "./pages/User/MissionPage";
@@ -25,6 +26,7 @@ function App() {
 
       {/* admin */}
       <Route path="/admin-dashboard" element={<AdminDashboard />} />
+      <Route path="/admin-donations" element={<AdminDonations />} />
 
       {/* user dashboard layout + nested pages */}
       <Route path="/user-dashboard" element={<UserLayout />}>

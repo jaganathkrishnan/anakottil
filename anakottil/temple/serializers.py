@@ -1,6 +1,5 @@
-# temple/serializers.py
 from rest_framework import serializers
-from .models import Booking
+from .models import Booking, Donation, TempleContent
 
 
 class BookingSerializer(serializers.ModelSerializer):
@@ -8,6 +7,7 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = [
             "id",
+            "user",
             "name",
             "mobile",
             "pooja_type",
@@ -17,4 +17,20 @@ class BookingSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
-        read_only_fields = ["status", "created_at"]
+        read_only_fields = ["user", "status", "created_at"]
+
+
+class DonationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Donation
+        fields = [
+            "id",
+            "name",
+            "mobile",
+            "amount",
+            "payment_reference",
+            "message",
+            "is_verified",
+            "created_at",
+        ]
+        read_only_fields = ["is_verified", "created_at"]

@@ -3,8 +3,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from .models import TempleContent, Booking
-from .serializers import BookingSerializer
+from .models import TempleContent, Booking, Donation
+from .serializers import BookingSerializer, DonationSerializer
 
 # ---------------------------
 # DEFAULT CONTENT FOR ABOUT / MISSION
@@ -73,25 +73,24 @@ def bookings_list_create(request):
       - Normal user: returns ONLY their bookings
       - Admin (is_staff): returns all bookings
       - Optional ?month=YYYY-MM to filter by month
-         e.g. /api/bookings/?month=2025-12
 
     POST:
-      - Create a new booking for the logged in user
-      - mobile is filled from user.username
-      - status is set to "pending"
+      - Create new booking for logged in user
+      - mobile auto-filled from username
+      - status = "pending"
     """
     user = request.user
 
     if request.method == "GET":
-        month_str = request.query_params.get("month")  # optional
+        month_str = request.query_params.get("month")
 
-        # Admin sees all, user sees only own
+        # admin sees all, user sees only own
         if user.is_staff:
             qs = Booking.objects.all()
         else:
             qs = Booking.objects.filter(user=user)
 
-        # Optional month filter
+        # optional month filter
         if month_str:
             try:
                 year, month = map(int, month_str.split("-"))
@@ -106,22 +105,18 @@ def bookings_list_create(request):
         serializer = BookingSerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # POST - create booking
-    if request.method == "POST":
-        data = request.data.copy()
+    # POST
+    data = request.data.copy()
+    data["mobile"] = request.user.username
 
-        # Fill mobile from username by default
-        # (Assuming accounts app uses username = mobile number)
-        data["mobile"] = user.username
-
-        serializer = BookingSerializer(data=data)
-        if serializer.is_valid():
-            booking = serializer.save(user=user, status="pending")
-            return Response(
-                BookingSerializer(booking).data,
-                status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer = BookingSerializer(data=data)
+    if serializer.is_valid():
+        booking = serializer.save(user=user, status="pending")
+        return Response(
+            BookingSerializer(booking).data,
+            status=status.HTTP_201_CREATED,
+        )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ---------------------------
@@ -133,15 +128,11 @@ def bookings_list_create(request):
 def booking_update_status(request, pk):
     """
     PATCH:
-      - Admin only
-      - Update status: pending / confirmed / cancelled
+      - Admin only: update status to pending/confirmed/cancelled
 
     DELETE:
-      - Normal user:
-          can delete ONLY their own booking
-          and ONLY if status == "pending"
-      - Admin:
-          can delete any booking (optional, allowed here)
+      - Admin: can delete any booking
+      - Normal user: can delete only their own *pending* bookings
     """
     user = request.user
 
@@ -153,7 +144,7 @@ def booking_update_status(request, pk):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    # ---------- ADMIN PATCH ----------
+    # PATCH: admin updates status
     if request.method == "PATCH":
         if not user.is_staff:
             return Response(
@@ -172,14 +163,14 @@ def booking_update_status(request, pk):
         booking.save()
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
 
-    # ---------- DELETE (user/admin) ----------
+    # DELETE: user/admin
     if request.method == "DELETE":
-        # Admin can delete any booking
+        # admin can delete any
         if user.is_staff:
             booking.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        # Normal user can delete only own pending booking
+        # normal user: only own + pending
         if booking.user != user:
             return Response(
                 {"detail": "You can only cancel your own bookings."},
@@ -194,3 +185,82 @@ def booking_update_status(request, pk):
 
         booking.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------
+# DONATIONS - LIST + CREATE
+# ---------------------------
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def donations_list_create(request):
+    """
+    GET:
+      - Admin: all donations
+      - User: only their donations
+
+    POST:
+      - User submits donation info (after UPI/bank payment).
+      - Admin later verifies manually.
+    """
+    user = request.user
+
+    if request.method == "GET":
+        if user.is_staff:
+            qs = Donation.objects.all()
+        else:
+            qs = Donation.objects.filter(user=user)
+        serializer = DonationSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # POST
+    data = request.data.copy()
+    if not data.get("mobile"):
+        data["mobile"] = user.username
+
+    serializer = DonationSerializer(data=data)
+    if serializer.is_valid():
+        donation = serializer.save(user=user)
+        return Response(
+            DonationSerializer(donation).data,
+            status=status.HTTP_201_CREATED,
+        )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ---------------------------
+# DONATION VERIFY (ADMIN)
+# ---------------------------
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def donation_verify(request, pk):
+    """
+    Admin toggles verification.
+    body: { "is_verified": true/false }
+    """
+    user = request.user
+    if not user.is_staff:
+        return Response(
+            {"detail": "Not allowed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        donation = Donation.objects.get(pk=pk)
+    except Donation.DoesNotExist:
+        return Response(
+            {"detail": "Donation not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_verified = request.data.get("is_verified")
+    if not isinstance(is_verified, bool):
+        return Response(
+            {"detail": "is_verified must be true or false."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    donation.is_verified = is_verified
+    donation.save()
+    return Response(DonationSerializer(donation).data, status=status.HTTP_200_OK)
