@@ -4,7 +4,13 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from .models import TempleContent, Booking, Donation
-from .serializers import BookingSerializer, DonationSerializer
+from .models import TempleContent, Booking, Donation, GalleryImage
+from .serializers import (
+    BookingSerializer,
+    DonationSerializer,
+    
+    GalleryImageSerializer,
+)
 
 # ---------------------------
 # DEFAULT CONTENT FOR ABOUT / MISSION
@@ -15,7 +21,7 @@ DEFAULT_CONTENT = {
         "title": "About Anakottil Temple",
         "body": (
             "Anakottil Temple is a sacred place of worship and devotion.\n\n"
-            "This is default content. You can edit it from Django admin."
+            "This is default content. You can edit it from Django admin or the Admin Content page."
         ),
     },
     "mission": {
@@ -23,7 +29,7 @@ DEFAULT_CONTENT = {
         "body": (
             "Our mission is to serve devotees, preserve traditions, "
             "and support the spiritual growth of the community.\n\n"
-            "This is default content. You can edit it from Django admin."
+            "This is default content. You can edit it from Django admin or the Admin Content page."
         ),
     },
 }
@@ -33,13 +39,15 @@ DEFAULT_CONTENT = {
 # TEMPLE STATIC CONTENT (ABOUT / MISSION)
 # ---------------------------
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @permission_classes([AllowAny])
 def get_temple_content(request, key):
     """
-    Return About / Mission content.
     GET /api/content/about/
     GET /api/content/mission/
+
+    PATCH (admin only):
+      body: { "title": "...", "body": "..." }
     """
     if key not in ["about", "mission"]:
         return Response(
@@ -51,6 +59,32 @@ def get_temple_content(request, key):
         key=key,
         defaults=DEFAULT_CONTENT.get(key, {"title": key, "body": ""}),
     )
+
+    # ---- READ (public) ----
+    if request.method == "GET":
+        data = {
+            "key": obj.key,
+            "title": obj.title,
+            "body": obj.body,
+            "updated_at": obj.updated_at,
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+    # ---- UPDATE (admin only) ----
+    # request.method == "PATCH"
+    user = request.user
+    if not user.is_authenticated or not user.is_staff:
+        return Response(
+            {"detail": "Not allowed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    title = request.data.get("title", obj.title)
+    body = request.data.get("body", obj.body)
+
+    obj.title = title
+    obj.body = body
+    obj.save()
 
     data = {
         "key": obj.key,
@@ -105,7 +139,7 @@ def bookings_list_create(request):
         serializer = BookingSerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # POST
+    # POST - create booking
     data = request.data.copy()
     data["mobile"] = request.user.username
 
@@ -264,3 +298,71 @@ def donation_verify(request, pk):
     donation.is_verified = is_verified
     donation.save()
     return Response(DonationSerializer(donation).data, status=status.HTTP_200_OK)
+# ---------------------------
+# GALLERY IMAGES
+# ---------------------------
+
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def gallery_list_create(request):
+    """
+    GET /api/gallery/
+      -> list all gallery images (public)
+
+    POST /api/gallery/ (admin only, multipart/form-data)
+      fields:
+        - image (file, required)
+        - caption (optional)
+    """
+    if request.method == "GET":
+        qs = GalleryImage.objects.all().order_by("-created_at")
+        serializer = GalleryImageSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # POST: admin only
+    user = request.user
+    if not user.is_authenticated or not user.is_staff:
+        return Response(
+            {"detail": "Not allowed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if "image" not in request.FILES:
+        return Response(
+            {"detail": "No image file uploaded. Use 'image' field."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    caption = request.data.get("caption", "")
+    img_obj = GalleryImage.objects.create(
+        image=request.FILES["image"],
+        caption=caption,
+    )
+
+    serializer = GalleryImageSerializer(img_obj)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def gallery_delete(request, pk):
+    """
+    DELETE /api/gallery/<id>/  (admin only)
+    """
+    user = request.user
+    if not user.is_staff:
+        return Response(
+            {"detail": "Not allowed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        img_obj = GalleryImage.objects.get(pk=pk)
+    except GalleryImage.DoesNotExist:
+        return Response(
+            {"detail": "Image not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    img_obj.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

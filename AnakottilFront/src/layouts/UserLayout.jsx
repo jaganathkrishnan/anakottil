@@ -43,6 +43,10 @@ export default function UserLayout() {
           <Link className="block p-2 rounded hover:bg-slate-200" to="/user-dashboard/donations">
             Donations
           </Link>
+          <Link className="block p-2 rounded hover:bg-slate-200" to="/user-dashboard/gallery">
+            Temple Gallery
+          </Link>
+
         </aside>
 
         {/* Main Content */}

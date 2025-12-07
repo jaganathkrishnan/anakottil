@@ -78,3 +78,16 @@ class Donation(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.amount} ({'verified' if self.is_verified else 'pending'})"
+class GalleryImage(models.Model):
+    """
+    Simple gallery: image + optional caption.
+    """
+    image = models.ImageField(upload_to="gallery/")
+    caption = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.caption or f"Image {self.id}"

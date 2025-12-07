@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Booking, Donation, TempleContent
+from .models import Booking, Donation, TempleContent, GalleryImage
 
 
 class BookingSerializer(serializers.ModelSerializer):
@@ -34,3 +34,7 @@ class DonationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["is_verified", "created_at"]
+class GalleryImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GalleryImage
+        fields = ["id", "image", "caption", "created_at"]
