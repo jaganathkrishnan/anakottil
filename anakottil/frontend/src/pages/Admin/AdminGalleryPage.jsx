@@ -2,7 +2,9 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:8000";
+import API_BASE_URL from "@/apiConfig";
+
+axios.post(`${API_BASE_URL}/api/auth/login/`, data)
 
 export default function AdminGalleryPage() {
   const [images, setImages] = useState([]);

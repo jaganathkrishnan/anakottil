@@ -1,8 +1,9 @@
 // src/pages/AdminDashboard.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import API_BASE_URL from "@/apiConfig";
 
-const API_BASE_URL = "http://localhost:8000";
+axios.post(`${API_BASE_URL}/api/auth/login/`, data)
 
 function AdminDashboard() {
   const [bookings, setBookings] = useState([]);

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import API_BASE_URL from "@/apiConfig";
 
-const API_BASE_URL = "http://localhost:8000";
+axios.post(`${API_BASE_URL}/api/auth/login/`, data)
 
 export default function AdminDonations() {
   const [donations, setDonations] = useState([]);
