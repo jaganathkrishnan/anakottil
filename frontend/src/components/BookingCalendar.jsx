@@ -4,7 +4,6 @@ import "react-calendar/dist/Calendar.css";
 import axios from "axios";
 import API_BASE_URL from "@/apiConfig";
 
-axios.post(`${API_BASE_URL}/api/auth/login/`, data)
 
 const NAKSHATRAS = [
   "Ashwathi","Bharani","Karthika","Rohini","Makayiram","Thiruvathira",

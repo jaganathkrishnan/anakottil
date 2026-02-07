@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 
 import API_BASE_URL from "@/apiConfig";
 
-axios.post(`${API_BASE_URL}/api/auth/login/`, data)
 
 export default function AboutPage() {
   const [data, setData] = useState({ title: "", body: "" });
