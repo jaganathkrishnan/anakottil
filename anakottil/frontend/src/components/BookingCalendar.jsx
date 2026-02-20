@@ -1,10 +1,9 @@
+// src/components/BookingCalendar.jsx
+
 import React, { useState, useEffect } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import axios from "axios";
-import API_BASE_URL from "@/apiConfig";
-
-axios.post(`${API_BASE_URL}/api/auth/login/`, data)
+import axios from "@/axiosInstance";
 
 const NAKSHATRAS = [
   "Ashwathi","Bharani","Karthika","Rohini","Makayiram","Thiruvathira",
@@ -23,20 +22,24 @@ const POOJA_TYPES = [
 function getMalayalamStar(date) {
   const baseDate = new Date("2020-01-01");
   const days = Math.floor((date - baseDate) / (1000 * 60 * 60 * 24));
-  const index = ((days % NAKSHATRAS.length) + NAKSHATRAS.length) % NAKSHATRAS.length;
+  const index =
+    ((days % NAKSHATRAS.length) + NAKSHATRAS.length) %
+    NAKSHATRAS.length;
   return NAKSHATRAS[index];
 }
 
 function formatDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(
+    d.getMonth() + 1
+  ).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function BookingCalendar() {
+export default function BookingCalendar() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [malayalamStar, setMalayalamStar] = useState("");
   const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     name: "",
     pooja_type: "archana",
@@ -44,22 +47,19 @@ function BookingCalendar() {
     notes: "",
   });
 
-  const token = localStorage.getItem("authToken");
-
-  // Fetch all bookings for *this user*
+  // 🔥 Fetch bookings
   useEffect(() => {
     const fetchBookings = async () => {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/bookings/`, {
-          headers: { Authorization: `Token ${token}` },
-        });
+        const res = await axios.get("/api/bookings/");
         setBookings(res.data);
-      } catch (e) {
-        console.log("Error loading bookings", e);
+      } catch (err) {
+        console.log("Error loading bookings", err);
       }
     };
-    if (token) fetchBookings();
-  }, [token]);
+
+    fetchBookings();
+  }, []);
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
@@ -67,7 +67,10 @@ function BookingCalendar() {
   };
 
   const handleInput = (e) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -77,20 +80,20 @@ function BookingCalendar() {
     const dateStr = formatDate(selectedDate);
 
     try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/bookings/`,
-        {
-          name: formData.name,
-          pooja_type: formData.pooja_type,
-          time_slot: formData.time_slot,
-          notes: formData.notes,
-          date: dateStr,
-        },
-        { headers: { Authorization: `Token ${token}` } }
-      );
+      setLoading(true);
+
+      const res = await axios.post("/api/bookings/", {
+        name: formData.name,
+        pooja_type: formData.pooja_type,
+        time_slot: formData.time_slot,
+        notes: formData.notes,
+        date: dateStr,
+      });
+
+      setBookings((prev) => [...prev, res.data]);
 
       alert("Booking successful! (pending)");
-      setBookings((prev) => [...prev, res.data]);
+
       setSelectedDate(null);
       setMalayalamStar("");
       setFormData({
@@ -99,61 +102,66 @@ function BookingCalendar() {
         time_slot: "",
         notes: "",
       });
-    } catch (e) {
-      console.log(e);
+
+    } catch (err) {
+      console.log(err);
       alert("Booking failed.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // User cancel (delete) pending booking
   const handleUserCancel = async (bookingId) => {
     const confirmDelete = window.confirm(
-      "Cancel this booking? This is only allowed while it is pending."
+      "Cancel this booking? Allowed only if pending."
     );
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(`${API_BASE_URL}/api/bookings/${bookingId}/`, {
-        headers: { Authorization: `Token ${token}` },
-      });
+      await axios.delete(`/api/bookings/${bookingId}/`);
 
-      // Remove locally
-      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
-    } catch (e) {
-      console.log(e);
+      setBookings((prev) =>
+        prev.filter((b) => b.id !== bookingId)
+      );
+    } catch (err) {
+      console.log(err);
       alert("Failed to cancel booking.");
     }
   };
 
-  // A date is blocked if any non-cancelled booking exists on that day
   const isBooked = selectedDate
     ? bookings.some(
-        (b) => b.date === formatDate(selectedDate) && b.status !== "cancelled"
+        (b) =>
+          b.date === formatDate(selectedDate) &&
+          b.status !== "cancelled"
       )
     : false;
 
-  // Calendar dots: red = confirmed, orange = pending-only
   const tileContent = ({ date, view }) => {
     if (view !== "month") return null;
+
     const dateStr = formatDate(date);
-
-    const bookingsForDay = bookings.filter((b) => b.date === dateStr);
-    const activeBookings = bookingsForDay.filter(
-      (b) => b.status !== "cancelled"
+    const bookingsForDay = bookings.filter(
+      (b) => b.date === dateStr && b.status !== "cancelled"
     );
-    if (activeBookings.length === 0) return null;
 
-    const hasConfirmed = activeBookings.some((b) => b.status === "confirmed");
-    const dotClass = hasConfirmed ? "text-red-500" : "text-orange-500";
+    if (bookingsForDay.length === 0) return null;
+
+    const hasConfirmed = bookingsForDay.some(
+      (b) => b.status === "confirmed"
+    );
 
     return (
-      <span className={`block text-center text-[10px] mt-0.5 ${dotClass}`}>
+      <span
+        className={`block text-center text-[10px] mt-0.5 ${
+          hasConfirmed ? "text-red-500" : "text-orange-500"
+        }`}
+      >
         ●
       </span>
     );
   };
 
-  // Split into upcoming + history
   const todayStr = formatDate(new Date());
 
   const upcomingBookings = bookings
@@ -162,32 +170,34 @@ function BookingCalendar() {
         b.status !== "cancelled" &&
         b.date >= todayStr
     )
-    .sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0));
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const historyBookings = bookings
-    .filter((b) => b.date < todayStr || b.status === "cancelled")
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    .filter(
+      (b) =>
+        b.status === "cancelled" ||
+        b.date < todayStr
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   const statusBadgeClass = (status) => {
-    if (status === "confirmed") return "bg-green-100 text-green-700";
-    if (status === "cancelled") return "bg-red-100 text-red-700";
-    return "bg-yellow-100 text-yellow-700"; // pending
+    if (status === "confirmed")
+      return "bg-green-100 text-green-700";
+    if (status === "cancelled")
+      return "bg-red-100 text-red-700";
+    return "bg-yellow-100 text-yellow-700";
   };
 
   return (
     <div className="space-y-8">
-      {/* Calendar + booking form */}
-      <div className="p-4 bg-white rounded-lg border border-slate-200">
-        <h2 className="text-xl font-semibold mb-1">📅 Pooja Booking</h2>
-        <p className="text-xs text-gray-500 mb-4">
-          <span className="text-red-500 font-semibold">●</span> confirmed,
-          <span className="text-orange-500 font-semibold ml-1">●</span> pending.
-          Cancelled slots are free again.
-        </p>
+      {/* Booking Section */}
+      <div className="p-4 bg-white rounded-xl shadow-sm">
+        <h2 className="text-xl font-semibold mb-2">
+          📅 Pooja Booking
+        </h2>
 
-        <div className="flex flex-col md:flex-row gap-8 justify-center items-start">
-          {/* Calendar */}
-          <div className="shadow-md rounded-lg p-2 bg-white">
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="shadow-sm rounded-lg p-2 bg-white">
             <Calendar
               onClickDay={handleDateChange}
               minDate={new Date()}
@@ -195,203 +205,157 @@ function BookingCalendar() {
             />
           </div>
 
-          {/* Form */}
           <div className="w-full max-w-sm">
             {!selectedDate && (
-              <p className="text-gray-500 text-sm">
-                Select a date on the calendar to book a pooja.
+              <p className="text-sm text-gray-500">
+                Select a date to book.
               </p>
             )}
 
             {selectedDate && !isBooked && (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <p className="text-sm text-gray-700">
-                  <span className="font-medium">Date:</span>{" "}
+                  <strong>Date:</strong>{" "}
                   {selectedDate.toDateString()}
                   <br />
-                  <span className="font-medium">Nakshatra:</span>{" "}
+                  <strong>Nakshatra:</strong>{" "}
                   {malayalamStar}
                 </p>
 
-                <div>
-                  <label className="block mb-1 text-sm font-medium">Name</label>
-                  <input
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInput}
-                    required
-                    className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
+                <input
+                  name="name"
+                  placeholder="Name"
+                  value={formData.name}
+                  onChange={handleInput}
+                  required
+                  className="w-full border border-gray-200 px-3 py-2 rounded focus:ring-2 focus:ring-blue-400"
+                />
 
-                <div>
-                  <label className="block mb-1 text-sm font-medium">
-                    Pooja Type
-                  </label>
-                  <select
-                    name="pooja_type"
-                    value={formData.pooja_type}
-                    onChange={handleInput}
-                    className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    {POOJA_TYPES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <select
+                  name="pooja_type"
+                  value={formData.pooja_type}
+                  onChange={handleInput}
+                  className="w-full border border-gray-200 px-3 py-2 rounded focus:ring-2 focus:ring-blue-400"
+                >
+                  {POOJA_TYPES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
 
-                <div>
-                  <label className="block mb-1 text-sm font-medium">
-                    Time Slot (optional)
-                  </label>
-                  <input
-                    name="time_slot"
-                    value={formData.time_slot}
-                    onChange={handleInput}
-                    className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    placeholder="e.g. 7:00 AM"
-                  />
-                </div>
+                <input
+                  name="time_slot"
+                  placeholder="Time Slot (optional)"
+                  value={formData.time_slot}
+                  onChange={handleInput}
+                  className="w-full border border-gray-200 px-3 py-2 rounded focus:ring-2 focus:ring-blue-400"
+                />
 
-                <div>
-                  <label className="block mb-1 text-sm font-medium">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleInput}
-                    rows={2}
-                    className="w-full border border-gray-300 px-3 py-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
+                <textarea
+                  name="notes"
+                  placeholder="Notes (optional)"
+                  value={formData.notes}
+                  onChange={handleInput}
+                  rows={2}
+                  className="w-full border border-gray-200 px-3 py-2 rounded focus:ring-2 focus:ring-blue-400"
+                />
 
                 <button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded text-sm font-medium"
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-blue-300"
                 >
-                  Book Pooja
+                  {loading ? "Booking..." : "Book Pooja"}
                 </button>
               </form>
             )}
 
             {selectedDate && isBooked && (
-              <p className="text-red-600 text-sm font-semibold mt-2">
-                ❌ Slot already booked on {selectedDate.toDateString()} (pending or confirmed).
+              <p className="text-red-600 text-sm mt-2">
+                ❌ Slot already booked.
               </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Upcoming bookings */}
-      <div className="p-4 bg-white rounded-lg border border-slate-200">
-        <h3 className="text-lg font-semibold mb-3">Your Upcoming Bookings</h3>
+      {/* Upcoming */}
+      <div className="p-4 bg-white rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-3">
+          Upcoming Bookings
+        </h3>
+
         {upcomingBookings.length === 0 ? (
           <p className="text-sm text-gray-500">
-            You have no upcoming bookings.
+            No upcoming bookings.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border border-slate-200">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="px-2 py-1 border">Date</th>
-                  <th className="px-2 py-1 border">Pooja</th>
-                  <th className="px-2 py-1 border">Time</th>
-                  <th className="px-2 py-1 border">Status</th>
-                  <th className="px-2 py-1 border">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upcomingBookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="px-2 py-1 border">{b.date}</td>
-                    <td className="px-2 py-1 border capitalize">
-                      {b.pooja_type}
-                    </td>
-                    <td className="px-2 py-1 border">
-                      {b.time_slot || "-"}
-                    </td>
-                    <td className="px-2 py-1 border">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] ${statusBadgeClass(
-                          b.status
-                        )}`}
-                      >
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1 border">
-                      {b.status === "pending" ? (
-                        <button
-                          onClick={() => handleUserCancel(b.id)}
-                          className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
-                        >
-                          Cancel
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-gray-400">
-                          –
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          upcomingBookings.map((b) => (
+            <div
+              key={b.id}
+              className="border-b border-slate-100 py-2 flex justify-between items-center"
+            >
+              <div className="text-sm">
+                {b.date} – {b.pooja_type}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs ${statusBadgeClass(
+                    b.status
+                  )}`}
+                >
+                  {b.status}
+                </span>
+
+                {b.status === "pending" && (
+                  <button
+                    onClick={() =>
+                      handleUserCancel(b.id)
+                    }
+                    className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* Booking history */}
-      <div className="p-4 bg-white rounded-lg border border-slate-200">
-        <h3 className="text-lg font-semibold mb-3">Booking History</h3>
+      {/* History */}
+      <div className="p-4 bg-white rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-3">
+          Booking History
+        </h3>
+
         {historyBookings.length === 0 ? (
           <p className="text-sm text-gray-500">
-            No past or cancelled bookings yet.
+            No history yet.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border border-slate-200">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="px-2 py-1 border">Date</th>
-                  <th className="px-2 py-1 border">Pooja</th>
-                  <th className="px-2 py-1 border">Time</th>
-                  <th className="px-2 py-1 border">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyBookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="px-2 py-1 border">{b.date}</td>
-                    <td className="px-2 py-1 border capitalize">
-                      {b.pooja_type}
-                    </td>
-                    <td className="px-2 py-1 border">
-                      {b.time_slot || "-"}
-                    </td>
-                    <td className="px-2 py-1 border">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] ${statusBadgeClass(
-                          b.status
-                        )}`}
-                      >
-                        {b.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          historyBookings.map((b) => (
+            <div
+              key={b.id}
+              className="border-b border-slate-100 py-2 flex justify-between"
+            >
+              <div className="text-sm">
+                {b.date} – {b.pooja_type}
+              </div>
+
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs ${statusBadgeClass(
+                  b.status
+                )}`}
+              >
+                {b.status}
+              </span>
+            </div>
+          ))
         )}
       </div>
     </div>
   );
 }
-
-export default BookingCalendar;

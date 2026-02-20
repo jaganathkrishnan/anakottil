@@ -1,23 +1,65 @@
-import axios from "axios";
+// src/pages/AboutPage.jsx
+
 import { useEffect, useState } from "react";
-
-import API_BASE_URL from "@/apiConfig";
-
-axios.post(`${API_BASE_URL}/api/auth/login/`, data)
+import axios from "@/axiosInstance";
 
 export default function AboutPage() {
-  const [data, setData] = useState({ title: "", body: "" });
+  const [data, setData] = useState({
+    title: "",
+    body: "",
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    axios.get(`${API_BASE_URL}/api/content/about/`).then((res) => {
-      setData(res.data);
-    });
+    const fetchContent = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const res = await axios.get(
+          "/api/content/about/"
+        );
+
+        setData(res.data);
+
+      } catch (err) {
+        console.error(err);
+        setError("Failed to load content.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContent();
   }, []);
 
+  if (loading) {
+    return (
+      <p className="text-sm text-slate-500">
+        Loading...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="text-sm text-red-600">
+        {error}
+      </p>
+    );
+  }
+
   return (
-    <div>
-      <h2 className="text-xl font-semibold mb-2">{data.title}</h2>
-      <p className="whitespace-pre-line text-sm">{data.body}</p>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold">
+        {data.title}
+      </h2>
+
+      <p className="whitespace-pre-line text-sm text-slate-700">
+        {data.body}
+      </p>
     </div>
   );
 }
