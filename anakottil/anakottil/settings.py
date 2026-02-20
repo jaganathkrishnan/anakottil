@@ -139,6 +139,7 @@ REST_FRAMEWORK = {
 }
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
+    "https://anakottil.vercel.app"
     "https://anakottil.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -148,4 +149,6 @@ MEDIA_ROOT = BASE_DIR / "media"
 import os
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-
+CSRF_TRUSTED_ORIGINS = [
+    "https://anakottil.vercel.app",
+]
